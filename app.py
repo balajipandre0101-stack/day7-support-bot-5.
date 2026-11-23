@@ -3,6 +3,8 @@
 
 import json
 import logging
+import time
+import uuid
 
 from flask import Flask, jsonify, request
 
@@ -101,6 +103,9 @@ TOOLS = {
 
 @app.post("/chat")
 def chat():
+    request_id = str(uuid.uuid4())
+    start_time = time.perf_counter()
+
     data = request.get_json(silent=True) or {}
 
     # Verify customer token
@@ -128,15 +133,25 @@ def chat():
         f"Customer message: {message}"
     )
 
-    logging.info("PROMPT: %s", prompt)
+    
 
     text, usage = call_llm(prompt, API_KEY)
+    model_name = "fake-support-model"
+
+    input_tokens = usage.get("input_tokens", 0)
+    output_tokens = usage.get("output_tokens", 0)
+
+    total_tokens = input_tokens + output_tokens
+    estimated_cost = total_tokens * 0.0005
+
+    latency_ms = (time.perf_counter() - start_time) * 1000
     result = json.loads(text)
 
    
     action = result.get("action")
     action_result = None
 
+   
     if action:
         args = result.get("args", {})
 
@@ -148,10 +163,19 @@ def chat():
 
         action_result = TOOLS[action](**args)
 
-
-    logging.info("REPLY to %s: %s", email, result["reply"])
+    logging.info(
+        "AI_MONITORING request_id=%s model=%s latency_ms=%.2f "
+        "input_tokens=%s output_tokens=%s estimated_cost_rs=%.4f",
+        request_id,
+        model_name,
+        latency_ms,
+        input_tokens,
+        output_tokens,
+        estimated_cost
+    )
 
     return jsonify({
+
         "reply": result["reply"],
         "action_result": action_result
     })
